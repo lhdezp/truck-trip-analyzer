@@ -18,6 +18,7 @@ from app.application.interfaces.market import MarketDataProvider
 from app.application.interfaces.persistence import AnalysisRepository
 from app.application.interfaces.routing import RoutingProvider
 from app.application.interfaces.vision import VisionProvider
+from app.application.interfaces.weather import WeatherProvider
 from app.application.schemas.analysis import MarketAnalysis, MarketReference, RouteAnalysis
 from app.application.schemas.extraction import ImageInput, LoadExtraction
 from app.application.schemas.result import (
@@ -49,6 +50,7 @@ from app.exceptions import ProviderError
 CODE_VISION_FAILED = "vision_failed"
 CODE_MARKET_FAILED = "market_failed"
 CODE_ROUTING_FAILED = "routing_failed"
+CODE_WEATHER_FAILED = "weather_failed"
 CODE_PARTIAL_EXTRACT = "partial_extraction"
 
 
@@ -122,12 +124,14 @@ class AnalyzeLoadUseCase:
         vision: VisionProvider,
         market: MarketDataProvider | None,
         routing: RoutingProvider | None,
+        weather: WeatherProvider | None,
         clock: Clock,
         repository: AnalysisRepository | None = None,
     ) -> None:
         self._vision = vision
         self._market = market
         self._routing = routing
+        self._weather = weather
         self._clock = clock
         self._repository = repository
         self._engine = FinancialEngine()
@@ -253,6 +257,33 @@ class AnalyzeLoadUseCase:
                     AnalysisWarning(
                         code=CODE_MARKET_FAILED,
                         message=f"Market data unavailable: {exc}",
+                        severity=Severity.INFO,
+                    )
+                )
+
+        # Weather: enrichment only; a failed call degrades to no weather block.
+        if self._weather is not None and load.origin and load.destination:
+            from app.application.schemas.weather import WeatherRequest
+
+            weather_request = WeatherRequest(
+                origin=load.origin.value,
+                destination=load.destination.value,
+            )
+            try:
+                weather_report = await self._weather.get_weather_report(weather_request)
+                sources.append(
+                    SourceRecord(
+                        provider="nws",
+                        kind="weather",
+                        retrieved_at=weather_report.retrieved_at,
+                        reference=None,
+                    )
+                )
+            except ProviderError as exc:
+                warnings.append(
+                    AnalysisWarning(
+                        code=CODE_WEATHER_FAILED,
+                        message=f"Weather data unavailable: {exc}",
                         severity=Severity.INFO,
                     )
                 )

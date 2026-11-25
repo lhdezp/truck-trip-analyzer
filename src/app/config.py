@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     OPENROUTESERVICE_API_KEY: SecretStr | None = None
 
     DATABASE_URL: str = "sqlite:///./truck_analyzer.db"
+    SERVER_HOST: str = "0.0.0.0"
+    SERVER_PORT: int = 8000
 
     @field_validator("TELEGRAM_ALLOWED_USERS")
     @classmethod

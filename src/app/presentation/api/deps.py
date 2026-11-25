@@ -16,11 +16,16 @@ from app.domain.entities.vehicle import VehicleProfile
 from app.domain.rules.recommendation import ProfitThresholds
 from app.domain.value_objects.money import Money, RatePerMile
 from app.infrastructure.ai.gemini import GeminiVisionProvider
+from app.infrastructure.maps.openrouteservice import (
+    OpenRouteServiceClient,
+    OpenRouteServiceRoutingProvider,
+)
 from app.infrastructure.market.freight_datawatch import (
     FreightDataWatchClient,
     FreightDataWatchMarketProvider,
 )
 from app.infrastructure.persistence.sqlite import SqliteAnalysisRepository
+from app.infrastructure.weather.nws import NwsWeatherProvider
 
 
 class _UtcClock:
@@ -35,15 +40,28 @@ def build_use_case(settings: Settings) -> AnalyzeLoadUseCase:
     vision = GeminiVisionProvider(settings)
     market_client = FreightDataWatchClient(settings)
     market = FreightDataWatchMarketProvider(market_client)
-    # Routing and weather are not implemented yet; the use case degrades gracefully.
+    routing = _build_routing(settings)
+    weather = NwsWeatherProvider(settings)
     repository = SqliteAnalysisRepository(settings.DATABASE_URL)
     return AnalyzeLoadUseCase(
         vision=vision,
         market=market,
-        routing=None,
+        routing=routing,
+        weather=weather,
         clock=_UtcClock(),
         repository=repository,
     )
+
+
+def _build_routing(settings: Settings) -> "RoutingProvider | None":
+    """Build the routing adapter when a key is configured; otherwise ``None``."""
+    from app.application.interfaces.routing import RoutingProvider
+
+    try:
+        client = OpenRouteServiceClient(settings)
+        return OpenRouteServiceRoutingProvider(client)
+    except Exception:
+        return None
 
 
 class DefaultLoadConfig:

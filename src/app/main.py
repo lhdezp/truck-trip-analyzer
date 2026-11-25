@@ -17,16 +17,23 @@ import uvicorn
 
 from app import __version__
 from app.application.interfaces.market import MarketDataProvider
+from app.application.interfaces.routing import RoutingProvider
 from app.application.interfaces.vision import VisionProvider
+from app.application.interfaces.weather import WeatherProvider
 from app.application.use_cases.analyze_load import AnalyzeLoadUseCase
 from app.config import Settings, get_settings
 from app.exceptions import ConfigurationError
 from app.infrastructure.ai.gemini import GeminiVisionProvider
+from app.infrastructure.maps.openrouteservice import (
+    OpenRouteServiceClient,
+    OpenRouteServiceRoutingProvider,
+)
 from app.infrastructure.market.freight_datawatch import (
     FreightDataWatchClient,
     FreightDataWatchMarketProvider,
 )
 from app.infrastructure.persistence.sqlite import SqliteAnalysisRepository
+from app.infrastructure.weather.nws import NwsWeatherProvider
 from app.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -44,14 +51,25 @@ def _build_use_case(settings: Settings) -> AnalyzeLoadUseCase:
     vision: VisionProvider = GeminiVisionProvider(settings)
     market_client = FreightDataWatchClient(settings)
     market: MarketDataProvider | None = FreightDataWatchMarketProvider(market_client)
+    routing: RoutingProvider | None = _build_routing(settings)
+    weather: WeatherProvider | None = NwsWeatherProvider(settings)
     repository = SqliteAnalysisRepository(settings.DATABASE_URL)
     return AnalyzeLoadUseCase(
         vision=vision,
         market=market,
-        routing=None,
+        routing=routing,
         clock=_UtcClock(),
         repository=repository,
     )
+
+
+def _build_routing(settings: Settings) -> RoutingProvider | None:
+    """Build the routing adapter when a key is configured; otherwise ``None``."""
+    try:
+        client = OpenRouteServiceClient(settings)
+        return OpenRouteServiceRoutingProvider(client)
+    except ConfigurationError:
+        return None
 
 
 def main() -> int:
@@ -101,8 +119,8 @@ def main() -> int:
     if settings.TELEGRAM_BOT_TOKEN:
         logger.info("Telegram bot will start with the server (token configured)")
 
-    logger.info("Starting HTTP server on 0.0.0.0:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    logger.info("Starting HTTP server on %s:%s", settings.SERVER_HOST, settings.SERVER_PORT)
+    uvicorn.run(app, host=settings.SERVER_HOST, port=settings.SERVER_PORT, log_level="info")
     return 0
 
 
