@@ -19,6 +19,7 @@ from app.application.schemas.analysis import RouteAnalysis
 from app.application.schemas.routing import RouteRequest
 from app.config import Settings
 from app.domain.value_objects.distance import Distance, Duration
+from app.domain.value_objects.location import USLocation
 from app.exceptions import ConfigurationError, ProviderError
 
 PROVIDER_NAME = "openrouteservice"
@@ -50,9 +51,7 @@ class OpenRouteServiceClient:
             "User-Agent": _USER_AGENT,
             "Accept": "application/geo+json",
         }
-        self._client = client or httpx.AsyncClient(
-            base_url=base_url, headers=headers, timeout=30.0
-        )
+        self._client = client or httpx.AsyncClient(base_url=base_url, headers=headers, timeout=30.0)
         self._owns_client = client is None
 
     async def close(self) -> None:
@@ -73,9 +72,7 @@ class OpenRouteServiceClient:
             "profile": "car",
         }
         try:
-            response = await self._client.post(
-                "/v2/directions/car/geojson", json=payload
-            )
+            response = await self._client.post("/v2/directions/car/geojson", json=payload)
         except httpx.HTTPError as exc:
             raise ProviderError(
                 f"OpenRouteService request failed: {exc}",
@@ -83,11 +80,11 @@ class OpenRouteServiceClient:
             ) from exc
         if response.status_code >= 400:
             raise ProviderError(
-                f"OpenRouteService returned {response.status_code}: "
-                f"{response.text[:200]}",
+                f"OpenRouteService returned {response.status_code}: {response.text[:200]}",
                 provider=PROVIDER_NAME,
             )
-        return response.json()
+        data: dict[str, object] = response.json()
+        return data
 
 
 class OpenRouteServiceRoutingProvider:
@@ -115,16 +112,22 @@ class OpenRouteServiceRoutingProvider:
             )
 
         data = await self._client._get_directions(origin_ll, destination_ll)
-        features = data.get("features", [])
-        if not features:
+        features_raw = data.get("features", [])
+        if not isinstance(features_raw, list) or not features_raw:
             return RouteAnalysis(
                 origin=request.origin,
                 destination=request.destination,
                 limitations=["no route found between the two locations"],
             )
-
-        geometry = features[0].get("geometry", {})
-        props = features[0].get("properties", {})
+        first_feature = features_raw[0]
+        if not isinstance(first_feature, dict):
+            return RouteAnalysis(
+                origin=request.origin,
+                destination=request.destination,
+                limitations=["no route found between the two locations"],
+            )
+        props_raw = first_feature.get("properties", {})
+        props = props_raw if isinstance(props_raw, dict) else {}
 
         # OpenRouteService returns distance in metres, duration in seconds.
         distance_m = props.get("distance", 0.0)
@@ -135,8 +138,7 @@ class OpenRouteServiceRoutingProvider:
         limitations: list[str] = []
         if request.vehicle is not None:
             limitations.append(
-                "Route computed with the car profile; HOS and truck restrictions "
-                "were not checked"
+                "Route computed with the car profile; HOS and truck restrictions were not checked"
             )
 
         return RouteAnalysis(

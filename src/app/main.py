@@ -58,6 +58,7 @@ def _build_use_case(settings: Settings) -> AnalyzeLoadUseCase:
         vision=vision,
         market=market,
         routing=routing,
+        weather=weather,
         clock=_UtcClock(),
         repository=repository,
     )

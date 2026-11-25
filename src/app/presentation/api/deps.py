@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from app.application.interfaces.routing import RoutingProvider
 from app.application.use_cases.analyze_load import AnalyzeLoadUseCase
 from app.config import Settings
 from app.domain.entities.vehicle import VehicleProfile
@@ -53,10 +54,8 @@ def build_use_case(settings: Settings) -> AnalyzeLoadUseCase:
     )
 
 
-def _build_routing(settings: Settings) -> "RoutingProvider | None":
+def _build_routing(settings: Settings) -> RoutingProvider | None:
     """Build the routing adapter when a key is configured; otherwise ``None``."""
-    from app.application.interfaces.routing import RoutingProvider
-
     try:
         client = OpenRouteServiceClient(settings)
         return OpenRouteServiceRoutingProvider(client)

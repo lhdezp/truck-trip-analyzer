@@ -24,7 +24,6 @@ from app.application.schemas.weather import (
 )
 from app.config import Settings
 from app.domain.value_objects.location import USLocation
-from app.exceptions import ProviderError
 
 PROVIDER_NAME = "nws"
 _USER_AGENT = "truck-load-analyzer/0.1 (+https://github.com/truck-load-analyzer)"
