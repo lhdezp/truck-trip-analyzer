@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "truck-load-analyzer"
+version = "0.1.0"
+description = "Analyze US freight load offers and recommend accept, negotiate, or reject."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aiogram>=3.34.0",
+    "fastapi>=0.115.0",
+    "google-genai>=3.6.1",
+    "httpx>=0.28.1",
+    "pydantic-settings>=2.16.3",
+    "python-multipart>=0.0.34",
+    "sqlalchemy>=2.1.9",
+    "uvicorn>=0.30.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+]
+
+[project.scripts]
+truck-analyzer = "app.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+show_error_codes = true
