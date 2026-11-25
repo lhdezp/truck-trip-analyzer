@@ -74,7 +74,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./truck_analyzer.db"
     SERVER_HOST: str = "0.0.0.0"
-    SERVER_PORT: int = 8000
+    SERVER_PORT: int = 8080
 
     @field_validator("TELEGRAM_ALLOWED_USERS")
     @classmethod
