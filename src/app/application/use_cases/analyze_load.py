@@ -178,6 +178,13 @@ class AnalyzeLoadUseCase:
         self._repository = repository
         self._engine = FinancialEngine()
 
+    @property
+    def repository(self) -> AnalysisRepository:
+        """The persistence port; the composition root always wires one."""
+        if self._repository is None:
+            raise RuntimeError("AnalyzeLoadUseCase was built without a repository")
+        return self._repository
+
     async def run(
         self,
         images: Sequence[ImageInput],
@@ -229,6 +236,16 @@ class AnalyzeLoadUseCase:
             )
             try:
                 route = await self._routing.analyze_route(request)
+                if route.loaded_miles is None and route.limitations:
+                    # A route with no distance is not a route: the reply must say so
+                    # instead of showing costs computed without miles.
+                    warnings.append(
+                        AnalysisWarning(
+                            code=CODE_ROUTING_FAILED,
+                            message=f"Route unavailable: {'; '.join(route.limitations)}",
+                            severity=Severity.WARNING,
+                        )
+                    )
                 sources.append(
                     SourceRecord(
                         provider=route.provider or "routing",
