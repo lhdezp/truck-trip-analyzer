@@ -6,11 +6,17 @@ response is the stable :class:`LoadAnalysisResult`.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.application.schemas.extraction import MAX_IMAGE_BYTES, ImageInput
+from app.application.schemas.extraction import (
+    MAX_IMAGE_BYTES,
+    ImageInput,
+    normalize_image_media_type,
+    sniff_image_media_type,
+)
 from app.application.schemas.result import LoadAnalysisResult
 from app.application.use_cases.analyze_load import AnalyzeLoadUseCase
 from app.config import get_settings
@@ -38,17 +44,30 @@ async def analyze(
     inputs: list[ImageInput] = []
     for file in images:
         content = await file.read()
-        media_type = file.content_type or "application/octet-stream"
-        if media_type not in _MEDIA_TYPES:
+        declared = normalize_image_media_type(file.content_type)
+        if declared is None:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=f"Unsupported media type '{media_type}'; "
+                detail=f"Unsupported media type '{file.content_type or 'unknown'}'; "
                 f"accepted: {', '.join(_MEDIA_TYPES)}",
+            )
+        if not content:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{file.filename or 'image'}' is empty",
             )
         if len(content) > MAX_IMAGE_BYTES:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"Image exceeds {MAX_IMAGE_BYTES} bytes; got {len(content)}",
+            )
+        # The bytes decide the media type: a mislabelled upload is a request the
+        # vision API would reject, so it is corrected here instead.
+        media_type = sniff_image_media_type(content)
+        if media_type is None:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"'{file.filename or 'image'}' is not a JPEG, PNG or WebP image",
             )
         inputs.append(
             ImageInput(
@@ -64,6 +83,7 @@ async def analyze(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
+@lru_cache(maxsize=1)
 def _use_case() -> AnalyzeLoadUseCase:
     settings = get_settings()
     return build_use_case(settings)

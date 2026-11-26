@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = ""
     GEMINI_TIMEOUT_SECONDS: float = Field(default=60.0, gt=0, le=300)
     MAX_IMAGES_PER_ANALYSIS: int = Field(default=6, ge=1, le=20)
+    # Ceiling for the base64-encoded images carried in ONE request. Inline data is
+    # the transport here, so the budget is counted after encoding (~33% larger than
+    # the raw bytes) and kept under the API's inline request limit.
+    GEMINI_MAX_REQUEST_BYTES: int = Field(default=18 * 1024 * 1024, ge=1024 * 1024)
 
     MARKET_PROVIDER: Literal["freight_datawatch"] = "freight_datawatch"
     FREIGHT_DATAWATCH_API_KEY: SecretStr | None = None
@@ -129,6 +133,7 @@ class Settings(BaseSettings):
             "ai_provider": self.AI_PROVIDER,
             "gemini_model": self.GEMINI_MODEL or None,
             "max_images_per_analysis": self.MAX_IMAGES_PER_ANALYSIS,
+            "gemini_max_request_bytes": self.GEMINI_MAX_REQUEST_BYTES,
             "market_provider": self.MARKET_PROVIDER,
             "market_base_url": self.FREIGHT_DATAWATCH_BASE_URL,
             "maps_provider": self.MAPS_PROVIDER,

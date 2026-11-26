@@ -43,11 +43,19 @@ from app.domain.value_objects.recommendation import (
     FinalRecommendation,
     RecommendationDecision,
 )
-from app.exceptions import ProviderError
+from app.exceptions import (
+    PROVIDER_KIND_PAYLOAD_TOO_LARGE,
+    PROVIDER_KIND_UNAUTHORIZED,
+    PROVIDER_KIND_UNAVAILABLE,
+    ProviderError,
+)
 
 # Stable warning codes. They are part of the response contract, so interfaces can
 # branch on them without parsing prose.
 CODE_VISION_FAILED = "vision_failed"
+CODE_VISION_UNAVAILABLE = "vision_unavailable"
+CODE_VISION_UNAUTHORIZED = "vision_unauthorized"
+CODE_VISION_PAYLOAD_TOO_LARGE = "vision_payload_too_large"
 CODE_MARKET_FAILED = "market_failed"
 CODE_ROUTING_FAILED = "routing_failed"
 CODE_WEATHER_FAILED = "weather_failed"
@@ -115,6 +123,40 @@ def _insufficient(missing_fields: list[LoadField]) -> FinalRecommendation:
     )
 
 
+def _vision_warning(exc: ProviderError | DomainValidationError) -> AnalysisWarning:
+    """Name the vision gap precisely.
+
+    An outage, a rejected credential, an oversized request and an unreadable
+    screenshot need different actions from the caller, so each gets its own code.
+    """
+    kind = exc.kind if isinstance(exc, ProviderError) else None
+    if kind == PROVIDER_KIND_UNAUTHORIZED:
+        return AnalysisWarning(
+            code=CODE_VISION_UNAUTHORIZED,
+            message="The vision provider rejected the credentials; "
+            "the service stays unavailable until they are fixed",
+            severity=Severity.CRITICAL,
+        )
+    if kind == PROVIDER_KIND_UNAVAILABLE:
+        return AnalysisWarning(
+            code=CODE_VISION_UNAVAILABLE,
+            message="Vision provider is unavailable; retry in a few minutes",
+            severity=Severity.CRITICAL,
+        )
+    if kind == PROVIDER_KIND_PAYLOAD_TOO_LARGE:
+        return AnalysisWarning(
+            code=CODE_VISION_PAYLOAD_TOO_LARGE,
+            message="The screenshots are too large for one vision request; "
+            "send fewer or smaller images",
+            severity=Severity.CRITICAL,
+        )
+    return AnalysisWarning(
+        code=CODE_VISION_FAILED,
+        message=f"Vision extraction failed: {exc}",
+        severity=Severity.CRITICAL,
+    )
+
+
 class AnalyzeLoadUseCase:
     """Turns screenshots of an offer into a financially justified recommendation."""
 
@@ -153,13 +195,7 @@ class AnalyzeLoadUseCase:
             extraction = await self._vision.extract_load(images, context=context)
             confidence = self._confidence_from_extraction(extraction)
         except (ProviderError, DomainValidationError) as exc:
-            warnings.append(
-                AnalysisWarning(
-                    code=CODE_VISION_FAILED,
-                    message=f"Vision extraction failed: {exc}",
-                    severity=Severity.CRITICAL,
-                )
-            )
+            warnings.append(_vision_warning(exc))
 
         load: LoadOffer = extraction.load if extraction is not None else LoadOffer()
         if extraction is not None:

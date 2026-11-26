@@ -23,6 +23,14 @@ class ConfigurationError(AppError):
     """Raised when the application cannot be configured safely."""
 
 
+# Failure categories carried in ``ProviderError.details["kind"]``. They live next to
+# the error so every layer can branch on them without importing an adapter.
+PROVIDER_KIND_UNAVAILABLE = "unavailable"
+PROVIDER_KIND_UNAUTHORIZED = "unauthorized"
+PROVIDER_KIND_REJECTED = "rejected"
+PROVIDER_KIND_PAYLOAD_TOO_LARGE = "payload_too_large"
+
+
 class ProviderError(AppError):
     """An external provider failed or returned something unusable.
 
@@ -39,3 +47,15 @@ class ProviderError(AppError):
     ) -> None:
         super().__init__(message, details=details)
         self.provider = provider
+
+    @property
+    def kind(self) -> str | None:
+        """Stable failure category, when the adapter classified the error.
+
+        Callers branch on this instead of parsing prose: ``unavailable`` means the
+        service is down (retry later), ``unauthorized`` means the credentials must be
+        fixed, and ``payload_too_large``/``rejected`` mean the request itself must
+        change.
+        """
+        kind = self.details.get("kind")
+        return kind if isinstance(kind, str) else None
