@@ -14,7 +14,6 @@ resends the same image and gets the same silence.
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from typing import NoReturn
 
 from aiogram import F, Router
@@ -154,8 +153,12 @@ async def cmd_start(message: Message) -> None:
 
 
 @router.message(F.photo | F.document)
-async def on_photo(message: Message) -> None:
-    """Run the analysis on the received image(s) and reply with the decision."""
+async def on_photo(message: Message, use_case: AnalyzeLoadUseCase) -> None:
+    """Run the analysis on the received image(s) and reply with the decision.
+
+    ``use_case`` is injected by the dispatcher from the composition root, so every
+    photo reuses the same provider clients and repository.
+    """
     settings = _settings()
     if message.from_user is None or message.from_user.id not in _allowed_user_ids(settings):
         logger.warning(
@@ -173,7 +176,7 @@ async def on_photo(message: Message) -> None:
     from app.presentation.api.deps import DefaultLoadConfig
 
     try:
-        result = await _use_case().run(
+        result = await use_case.run(
             [image],
             config=DefaultLoadConfig(),
             context=_context_for(message),
@@ -235,16 +238,3 @@ def _settings() -> Settings:
     from app.config import get_settings
 
     return get_settings()
-
-
-@lru_cache(maxsize=1)
-def _use_case() -> AnalyzeLoadUseCase:
-    """Build the use case once per process.
-
-    Building it per message created a new ``genai.Client`` (and its HTTP pool) and a
-    new SQLite repository for every photo, which leaked connections under load.
-    """
-    from app.config import get_settings
-    from app.presentation.api.deps import build_use_case
-
-    return build_use_case(get_settings())
