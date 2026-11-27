@@ -105,14 +105,14 @@ def main() -> int:
 
     logger.info("Adapters ready: %s", ", ".join(adapters))
 
-    # V0.6: build the use case.
-    _build_use_case(settings)
+    # V0.6: build the use case and hand it to the app so the HTTP routers and the
+    # Telegram bot share one provider client and repository.
+    use_case = _build_use_case(settings)
 
-    # V0.7: start the HTTP server. The app is built lazily so the use case is
-    # composed only when the first request arrives.
+    # V0.7: start the HTTP server.
     from app.presentation.api.app import create_app
 
-    app = create_app(settings)
+    app = create_app(settings, use_case=use_case)
 
     # V0.8: the Telegram bot is scheduled on the server's event loop by the
     # FastAPI lifespan. If a token is configured, the bot starts with the server

@@ -6,7 +6,6 @@ response is the stable :class:`LoadAnalysisResult`.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -19,9 +18,8 @@ from app.application.schemas.extraction import (
 )
 from app.application.schemas.result import LoadAnalysisResult
 from app.application.use_cases.analyze_load import AnalyzeLoadUseCase
-from app.config import get_settings
 from app.exceptions import AppError
-from app.presentation.api.deps import DefaultLoadConfig, build_use_case
+from app.presentation.api.deps import DefaultLoadConfig, resolve_use_case
 from app.presentation.api.routers.auth import AuthedUser
 
 router = APIRouter(prefix="/analyze", tags=["analysis"])
@@ -32,7 +30,7 @@ _MEDIA_TYPES = ("image/jpeg", "image/png", "image/webp")
 @router.post("")
 async def analyze(
     user: AuthedUser,
-    use_case: Annotated[AnalyzeLoadUseCase, Depends(_use_case)],
+    use_case: Annotated[AnalyzeLoadUseCase, Depends(resolve_use_case)],
     images: Annotated[list[UploadFile], File(min_length=1)],
     context: str | None = None,
 ) -> LoadAnalysisResult:
@@ -81,9 +79,3 @@ async def analyze(
         return await use_case.run(inputs, config=DefaultLoadConfig(), context=context)
     except AppError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
-
-
-@lru_cache(maxsize=1)
-def _use_case() -> AnalyzeLoadUseCase:
-    settings = get_settings()
-    return build_use_case(settings)

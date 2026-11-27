@@ -10,9 +10,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from fastapi import Request
+
 from app.application.interfaces.routing import RoutingProvider
 from app.application.use_cases.analyze_load import AnalyzeLoadUseCase
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.domain.entities.vehicle import VehicleProfile
 from app.domain.rules.recommendation import ProfitThresholds
 from app.domain.value_objects.money import Money, RatePerMile
@@ -61,6 +63,19 @@ def _build_routing(settings: Settings) -> RoutingProvider | None:
         return OpenRouteServiceRoutingProvider(client)
     except Exception:
         return None
+
+
+def resolve_use_case(request: Request) -> AnalyzeLoadUseCase:
+    """FastAPI dependency: return the use case the app was composed with.
+
+    The composition root hands its single instance through ``app.state`` so the HTTP
+    surface and the Telegram bot share one provider client and repository. Apps built
+    without one (tests) fall back to a freshly composed instance.
+    """
+    use_case = getattr(request.app.state, "use_case", None)
+    if use_case is None:
+        use_case = build_use_case(get_settings())
+    return use_case
 
 
 class DefaultLoadConfig:

@@ -25,11 +25,18 @@ from app.presentation.api.routers import analysis, health, history
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    use_case: AnalyzeLoadUseCase | None = None,
+) -> FastAPI:
     """Build the FastAPI application.
 
     ``settings`` is injected so tests can point at a local file or override secrets.
     The default reads the process-wide :func:`get_settings`.
+
+    ``use_case`` is optional: when omitted the app builds its own (tests), when the
+    composition root passes one the HTTP surface and the Telegram bot share it.
     """
     resolved = settings or get_settings()
 
@@ -39,8 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if resolved.TELEGRAM_BOT_TOKEN:
             from app.presentation.telegram.bot import start_bot_in_background
 
-            use_case: AnalyzeLoadUseCase = build_use_case(resolved)
-            start_bot_in_background(resolved, use_case)
+            start_bot_in_background(resolved, use_case or build_use_case(resolved))
             logger.info("Telegram bot scheduled on the server event loop")
         yield
 
@@ -51,6 +57,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/openapi.json",
         lifespan=lifespan,
     )
+
+    if use_case is not None:
+        app.state.use_case = use_case
 
     app.include_router(health.router)
     app.include_router(analysis.router)
